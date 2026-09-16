@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0b0f" />
+    <meta name="description" content="Interactive WebGPU image relighting from radiance, depth, and normal maps." />
+    <title>Neural Relight Lab</title>
+    <link rel="stylesheet" href="/src/style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Neural Relight Lab home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><path d="M16 3.5v4M16 24.5v4M3.5 16h4M24.5 16h4M7.2 7.2l2.8 2.8M22 22l2.8 2.8M24.8 7.2 22 10M10 22l-2.8 2.8"/><circle cx="16" cy="16" r="5.5"/></svg>
+          </span>
+          <span>Neural Relight <b>Lab</b></span>
+        </a>
+        <div class="topbar-center" aria-label="Rendering pipeline">
+          <span>RGB</span><i></i><span>DEPTH</span><i></i><span>NORMALS</span><i></i><strong>RELIGHT</strong>
+        </div>
+        <div class="gpu-status" id="gpu-status"><span></span><b>INITIALIZING</b></div>
+      </header>
+
+      <main class="workspace">
+        <section class="stage-column" aria-label="Relighting preview">
+          <div class="stage-header">
+            <div>
+              <div class="eyebrow">REALTIME VIEWPORT</div>
+              <h1>Single-view scene relighting</h1>
+            </div>
+            <div class="view-tabs" role="tablist" aria-label="Output buffer">
+              <button class="view-tab active" role="tab" aria-selected="true" data-view="0">Relit</button>
+              <button class="view-tab" role="tab" aria-selected="false" data-view="1">Radiance</button>
+              <button class="view-tab" role="tab" aria-selected="false" data-view="2">Depth</button>
+              <button class="view-tab" role="tab" aria-selected="false" data-view="3">Normals</button>
+            </div>
+          </div>
+
+          <div class="viewport-shell">
+            <canvas id="gpu-canvas" width="1448" height="1086" aria-label="WebGPU relit living room render"></canvas>
+            <div id="light-handles" class="light-handles" aria-label="Light positions"></div>
+            <div class="viewport-hint" id="viewport-hint">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4"/></svg>
+              Drag lights to move in X/Y
+            </div>
+            <div class="frame-stats" aria-live="polite"><b id="frame-ms">— ms</b><span>GPU FRAME</span></div>
+            <div class="loading-cover" id="loading-cover">
+              <span class="loader"></span>
+              <b>Preparing WebGPU pipeline</b>
+            </div>
+          </div>
+
+          <div class="stage-footer">
+            <div class="buffer-legend">
+              <span><i class="dot rgb"></i>Radiance <b>1448×1086</b></span>
+              <span><i class="dot depth"></i>Metric proxy <b>R8</b></span>
+              <span><i class="dot normal"></i>World normals <b>RGB8</b></span>
+            </div>
+            <button class="icon-button" id="reset-camera" aria-label="Reset light positions" title="Reset light positions">
+              <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.68M4 4v4.68h4.68"/></svg>
+            </button>
+          </div>
+
+          <details class="explanation">
+            <summary><span>How this demo reconstructs and lights the scene</span><svg viewBox="0 0 24 24"><path d="m8 10 4 4 4-4"/></svg></summary>
+            <div class="explanation-grid">
+              <article><b>01</b><div><h3>Unproject</h3><p>Depth and an approximate pinhole camera turn every pixel into a 3D surface point.</p></div></article>
+              <article><b>02</b><div><h3>Orient</h3><p>Use the supplied normal map, or reconstruct normals from neighboring depth samples.</p></div></article>
+              <article><b>03</b><div><h3>Shade</h3><p>WGSL accumulates diffuse and specular energy from each point light in linear color.</p></div></article>
+              <article><b>04</b><div><h3>Occlude</h3><p>A short screen-space depth march approximates contact shadows toward every light.</p></div></article>
+            </div>
+          </details>
+        </section>
+
+        <aside class="control-panel" aria-label="Lighting controls">
+          <div class="panel-heading">
+            <div><div class="eyebrow">SCENE SETUP</div><h2>Light rig</h2></div>
+            <button class="add-button" id="add-light"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Add light</button>
+          </div>
+
+          <div class="preset-row" aria-label="Light presets">
+            <button data-preset="studio" class="active">Studio</button>
+            <button data-preset="sunset">Sunset</button>
+            <button data-preset="neon">Neon</button>
+          </div>
+
+          <div id="light-list" class="light-list"></div>
+
+          <section class="editor" id="light-editor" aria-label="Selected light properties">
+            <div class="editor-title">
+              <div><span class="selected-swatch" id="selected-swatch"></span><b id="selected-name">Key light</b></div>
+              <button id="remove-light" class="trash-button" aria-label="Remove selected light" title="Remove selected light">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>
+              </button>
+            </div>
+
+            <label class="color-control" for="light-color"><span>Color</span><span class="color-value" id="color-value">#FFF1D6</span><input id="light-color" type="color" value="#fff1d6" /></label>
+
+            <label class="range-control" for="intensity"><span>Intensity <output id="intensity-value">4.5</output></span><input id="intensity" type="range" min="0" max="12" step="0.1" value="4.5" /></label>
+            <label class="range-control" for="depth-position"><span>Depth / Z <output id="depth-value">1.30 m</output></span><input id="depth-position" type="range" min="0.45" max="5" step="0.01" value="1.3" /></label>
+            <label class="range-control" for="radius"><span>Falloff radius <output id="radius-value">2.4 m</output></span><input id="radius" type="range" min="0.4" max="6" step="0.1" value="2.4" /></label>
+            <label class="range-control" for="source-radius"><span>Source radius <output id="source-radius-value">0.16 m</output></span><input id="source-radius" type="range" min="0" max="0.6" step="0.01" value="0.16" /></label>
+          </section>
+
+          <section class="render-settings">
+            <div class="settings-title"><div class="eyebrow">RENDER SETTINGS</div><span>WebGPU / WGSL</span></div>
+            <label class="select-row" for="normal-source"><span>Normal source</span><select id="normal-source"><option value="0">Provided normal map</option><option value="1">Derive from depth</option></select></label>
+            <label class="range-control compact" for="ambient"><span>Ambient intensity <output id="ambient-value">0.32</output></span><input id="ambient" type="range" min="0" max="1.2" step="0.01" value="0.32" /></label>
+            <label class="range-control compact" for="roughness"><span>Roughness <output id="roughness-value">0.62</output></span><input id="roughness" type="range" min="0.05" max="1" step="0.01" value="0.62" /></label>
+            <label class="switch-row"><span><b>Screen-space shadows</b><small>Pixel-space depth march</small></span><input id="shadows" type="checkbox" checked /><i></i></label>
+            <label class="range-control compact" for="shadow-samples"><span>Maximum shadow samples <output id="shadow-samples-value">24</output></span><input id="shadow-samples" type="range" min="4" max="64" step="4" value="24" /></label>
+          </section>
+
+          <div class="technical-note">
+            <svg viewBox="0 0 24 24"><path d="M12 3 2.8 19h18.4L12 3ZM12 9v4M12 16h.01"/></svg>
+            <p>This is a 2.5D approximation. Disoccluded geometry and surfaces outside the camera view are unknown.</p>
+          </div>
+        </aside>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

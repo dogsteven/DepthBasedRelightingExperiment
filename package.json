@@ -1,0 +1,11 @@
+{
+  "name": "webgpu-neural-relight-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "node --check src/main.js",
+    "preview": "node server.mjs"
+  }
+}
